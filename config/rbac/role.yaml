@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - kmc.kmc.io
+  resources:
+  - quotas
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kmc.kmc.io
+  resources:
+  - quotas/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kmc.kmc.io
+  resources:
+  - quotas/status
+  verbs:
+  - get
+  - patch
+  - update
