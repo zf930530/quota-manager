@@ -41,6 +41,8 @@ const (
 	ClusterNameLabel = "virtual-kubelet.io/provider-cluster-name"
 	// RequestedGPUAnnotation is the annotation key used to specify GPU type
 	RequestedGPUAnnotation = "kmc.io/requested_gpu"
+	// PodClusterIndexKey is the cache index key used to index Pods by cluster label
+	PodClusterIndexKey = "podClusterIdx"
 )
 
 // QuotaReconciler reconciles a Quota object
@@ -104,28 +106,21 @@ func (r *QuotaReconciler) calculateUsedResources(ctx context.Context, quota *kmc
 		GPU:    make(map[string]int32),
 	}
 
-	// Get all pods in all namespaces
-	podList := &corev1.PodList{}
-	err := r.List(ctx, podList)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pods: %w", err)
-	}
-
-	logger.Info("Found pods", "count", len(podList.Items))
-
-	// Process each pod
-	for _, pod := range podList.Items {
-		// Skip terminated pods
-		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-			continue
+	for _, clusterName := range quota.Spec.Clusters {
+		podList := &corev1.PodList{}
+		if err := r.List(ctx, podList, client.MatchingFields{PodClusterIndexKey: clusterName}); err != nil {
+			return nil, fmt.Errorf("failed to list pods for cluster %s: %w", clusterName, err)
 		}
 
-		// Check if this pod belongs to any of the quota's clusters
-		if clusterName, exists := pod.Labels[ClusterNameLabel]; exists {
-			if r.containsString(quota.Spec.Clusters, clusterName) {
-				logger.V(1).Info("Processing pod", "pod", pod.Name, "cluster", clusterName)
-				r.addPodResources(used, &pod)
+		logger.V(1).Info("Found pods for cluster", "cluster", clusterName, "count", len(podList.Items))
+
+		for _, pod := range podList.Items {
+			// Skip terminated pods
+			if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+				continue
 			}
+
+			r.addPodResources(used, &pod)
 		}
 	}
 
@@ -369,6 +364,18 @@ func (r *QuotaReconciler) getConditionMessage(exhausted bool) string {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *QuotaReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// build field index so we can efficiently list pods by cluster label
+	ctx := context.Background()
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &corev1.Pod{}, PodClusterIndexKey, func(rawObj client.Object) []string {
+		pod := rawObj.(*corev1.Pod)
+		if val, ok := pod.Labels[ClusterNameLabel]; ok {
+			return []string{val}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kmcv1beta1.Quota{}).
 		Watches(
