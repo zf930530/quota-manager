@@ -38,6 +38,8 @@ import (
 const (
 	// ClusterNameLabel is the label key used to identify which cluster a pod belongs to
 	ClusterNameLabel = "virtual-kubelet.io/provider-cluster-name"
+	// RequestedGPUAnnotation is the annotation key used to specify GPU type
+	RequestedGPUAnnotation = "kmc.io/requested_gpu"
 )
 
 // QuotaReconciler reconciles a Quota object
@@ -131,6 +133,9 @@ func (r *QuotaReconciler) calculateUsedResources(ctx context.Context, quota *kmc
 
 // addPodResources adds a pod's resource requests to the used resources
 func (r *QuotaReconciler) addPodResources(used *kmcv1beta1.ResourceList, pod *corev1.Pod) {
+	// Check if this pod requests GPU via annotation
+	gpuType, hasGPURequest := pod.Annotations[RequestedGPUAnnotation]
+
 	for _, container := range pod.Spec.Containers {
 		requests := container.Resources.Requests
 
@@ -144,52 +149,62 @@ func (r *QuotaReconciler) addPodResources(used *kmcv1beta1.ResourceList, pod *co
 			used.Memory.Add(memRequest)
 		}
 
-		// Add GPU resources
-		for resourceName, quantity := range requests {
-			if r.isGPUResource(string(resourceName)) {
-				gpuType := r.extractGPUType(string(resourceName))
-				if gpuType != "" {
-					used.GPU[gpuType] += int32(quantity.Value())
-				}
+		// Add GPU resources if annotation is present
+		if hasGPURequest && gpuType != "" {
+			// Sum all GPU-related resources for this container
+			// This could be nvidia.com/gpu, nvidia.com/A100, amd.com/gpu, etc.
+			gpuCount := r.sumGPUResources(requests)
+			if gpuCount > 0 {
+				used.GPU[gpuType] += gpuCount
 			}
 		}
 	}
 }
 
-// isGPUResource checks if a resource name represents a GPU resource
-func (r *QuotaReconciler) isGPUResource(resourceName string) bool {
-	// Common GPU resource names
-	gpuResources := []string{
-		"nvidia.com/gpu",
-		"amd.com/gpu",
-		"intel.com/gpu",
-		"nvidia.com/A100",
-		"nvidia.com/H20",
-		"nvidia.com/V100",
+// sumGPUResources sums up all GPU-related resource requests in a container
+// It automatically detects GPU resources by looking for common patterns
+func (r *QuotaReconciler) sumGPUResources(requests corev1.ResourceList) int32 {
+	var totalGPU int32 = 0
+
+	for resourceName, quantity := range requests {
+		resourceStr := string(resourceName)
+
+		// Check if this resource name indicates a GPU resource
+		if r.isGPUResourceName(resourceStr) {
+			totalGPU += int32(quantity.Value())
+		}
 	}
 
-	for _, gpuRes := range gpuResources {
-		if resourceName == gpuRes {
+	return totalGPU
+}
+
+// isGPUResourceName checks if a resource name represents a GPU resource
+// by looking for common GPU resource patterns
+func (r *QuotaReconciler) isGPUResourceName(resourceName string) bool {
+	// Check for common GPU resource patterns
+	// This covers nvidia.com/gpu, amd.com/gpu, intel.com/gpu, etc.
+	if resourceName == "gpu" {
+		return true
+	}
+
+	// Check for vendor-specific GPU resources
+	// Pattern: {vendor}.com/gpu or {vendor}.com/{gpu-model}
+	gpuPatterns := []string{
+		".com/gpu",    // nvidia.com/gpu, amd.com/gpu, etc.
+		"nvidia.com/", // nvidia.com/A100, nvidia.com/V100, etc.
+		"amd.com/",    // amd.com/MI100, etc.
+		"intel.com/",  // intel.com/XE, etc.
+	}
+
+	for _, pattern := range gpuPatterns {
+		if resourceName == pattern ||
+			(len(resourceName) > len(pattern) && resourceName[:len(pattern)] == pattern) ||
+			(pattern == ".com/gpu" && len(resourceName) > 8 && resourceName[len(resourceName)-8:] == ".com/gpu") {
 			return true
 		}
 	}
-	return false
-}
 
-// extractGPUType extracts GPU type from resource name
-func (r *QuotaReconciler) extractGPUType(resourceName string) string {
-	switch resourceName {
-	case "nvidia.com/A100":
-		return "A100"
-	case "nvidia.com/H20":
-		return "H20"
-	case "nvidia.com/V100":
-		return "V100"
-	case "nvidia.com/gpu":
-		return "gpu" // generic GPU
-	default:
-		return ""
-	}
+	return false
 }
 
 // updateQuotaStatus updates the quota status with used resources and conditions
