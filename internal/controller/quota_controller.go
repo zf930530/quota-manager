@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -152,7 +153,7 @@ func (r *QuotaReconciler) addPodResources(used *kmcv1beta1.ResourceList, pod *co
 		// Add GPU resources if annotation is present
 		if hasGPURequest && gpuType != "" {
 			// Sum all GPU-related resources for this container
-			// This could be nvidia.com/gpu, nvidia.com/A100, amd.com/gpu, etc.
+			// The GPU type is determined by annotation (A100, H20, V100, etc.)
 			gpuCount := r.sumGPUResources(requests)
 			if gpuCount > 0 {
 				used.GPU[gpuType] += gpuCount
@@ -162,14 +163,15 @@ func (r *QuotaReconciler) addPodResources(used *kmcv1beta1.ResourceList, pod *co
 }
 
 // sumGPUResources sums up all GPU-related resource requests in a container
-// It automatically detects GPU resources by looking for common patterns
+// It looks for any resource that contains "gpu" in the name (case-insensitive)
 func (r *QuotaReconciler) sumGPUResources(requests corev1.ResourceList) int32 {
 	var totalGPU int32 = 0
 
 	for resourceName, quantity := range requests {
 		resourceStr := string(resourceName)
 
-		// Check if this resource name indicates a GPU resource
+		// Check if this resource name contains "gpu" (case-insensitive)
+		// This covers nvidia.com/gpu, nvidia.com/A100, amd.com/gpu, etc.
 		if r.isGPUResourceName(resourceStr) {
 			totalGPU += int32(quantity.Value())
 		}
@@ -179,32 +181,14 @@ func (r *QuotaReconciler) sumGPUResources(requests corev1.ResourceList) int32 {
 }
 
 // isGPUResourceName checks if a resource name represents a GPU resource
-// by looking for common GPU resource patterns
+// by looking for "gpu" in the resource name (case-insensitive)
 func (r *QuotaReconciler) isGPUResourceName(resourceName string) bool {
-	// Check for common GPU resource patterns
-	// This covers nvidia.com/gpu, amd.com/gpu, intel.com/gpu, etc.
-	if resourceName == "gpu" {
-		return true
-	}
+	// Convert to lowercase for case-insensitive comparison
+	resourceLower := strings.ToLower(resourceName)
 
-	// Check for vendor-specific GPU resources
-	// Pattern: {vendor}.com/gpu or {vendor}.com/{gpu-model}
-	gpuPatterns := []string{
-		".com/gpu",    // nvidia.com/gpu, amd.com/gpu, etc.
-		"nvidia.com/", // nvidia.com/A100, nvidia.com/V100, etc.
-		"amd.com/",    // amd.com/MI100, etc.
-		"intel.com/",  // intel.com/XE, etc.
-	}
-
-	for _, pattern := range gpuPatterns {
-		if resourceName == pattern ||
-			(len(resourceName) > len(pattern) && resourceName[:len(pattern)] == pattern) ||
-			(pattern == ".com/gpu" && len(resourceName) > 8 && resourceName[len(resourceName)-8:] == ".com/gpu") {
-			return true
-		}
-	}
-
-	return false
+	// Check if the resource name contains "gpu"
+	// This covers: gpu, nvidia.com/gpu, nvidia.com/A100, amd.com/gpu, etc.
+	return strings.Contains(resourceLower, "gpu") || resourceName == "gpu"
 }
 
 // updateQuotaStatus updates the quota status with used resources and conditions
