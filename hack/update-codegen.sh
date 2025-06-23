@@ -34,11 +34,13 @@ go run k8s.io/code-generator/cmd/client-gen \
   --input-base "" \
   --input "github.com/zf930530/quota-manager/api/v1beta1" \
   --output-package "github.com/zf930530/quota-manager/pkg/generated/clientset" \
+  --output-base "${SCRIPT_ROOT}" \
   --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
 
 go run k8s.io/code-generator/cmd/lister-gen \
   --input-dirs "github.com/zf930530/quota-manager/api/v1beta1" \
   --output-package "github.com/zf930530/quota-manager/pkg/generated/listers" \
+  --output-base "${SCRIPT_ROOT}" \
   --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
 
 go run k8s.io/code-generator/cmd/informer-gen \
@@ -46,6 +48,7 @@ go run k8s.io/code-generator/cmd/informer-gen \
   --versioned-clientset-package "github.com/zf930530/quota-manager/pkg/generated/clientset/versioned" \
   --listers-package "github.com/zf930530/quota-manager/pkg/generated/listers" \
   --output-package "github.com/zf930530/quota-manager/pkg/generated/informers" \
+  --output-base "${SCRIPT_ROOT}" \
   --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
 
 # To use your own boilerplate text append:
