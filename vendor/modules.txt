@@ -273,6 +273,8 @@ go.uber.org/zap/internal/exit
 go.uber.org/zap/internal/pool
 go.uber.org/zap/internal/stacktrace
 go.uber.org/zap/zapcore
+# golang.org/x/crypto v0.21.0
+## explicit; go 1.18
 # golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e
 ## explicit; go 1.18
 golang.org/x/exp/constraints
@@ -788,6 +790,8 @@ k8s.io/client-go/util/homedir
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
+# k8s.io/code-generator v0.29.0
+## explicit; go 1.21
 # k8s.io/component-base v0.30.1
 ## explicit; go 1.22.0
 k8s.io/component-base/config

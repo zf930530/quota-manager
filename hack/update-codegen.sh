@@ -51,5 +51,15 @@ go run k8s.io/code-generator/cmd/informer-gen \
   --output-base "${SCRIPT_ROOT}" \
   --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
 
+# Move generated files from incorrect location to correct location
+echo "Moving generated files to correct location..."
+if [ -d "${SCRIPT_ROOT}/github.com/zf930530/quota-manager/pkg/generated" ]; then
+  cp -r "${SCRIPT_ROOT}/github.com/zf930530/quota-manager/pkg/generated/"* "${SCRIPT_ROOT}/pkg/generated/"
+  rm -rf "${SCRIPT_ROOT}/github.com"
+  echo "Generated files moved successfully."
+else
+  echo "No files found in github.com directory, generation may have failed."
+fi
+
 # To use your own boilerplate text append:
 #   --go-header-file "${SCRIPT_ROOT}"/hack/custom-boilerplate.go.txt 
