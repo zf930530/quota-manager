@@ -1,0 +1,23 @@
+# permissions for end users to view quotas.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: quota-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: quota-viewer-role
+rules:
+- apiGroups:
+  - kmc.kmc.io
+  resources:
+  - quotas
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kmc.kmc.io
+  resources:
+  - quotas/status
+  verbs:
+  - get

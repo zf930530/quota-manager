@@ -1,0 +1,9 @@
+apiVersion: kmc.kmc.io/v1beta1
+kind: Quota
+metadata:
+  labels:
+    app.kubernetes.io/name: quota-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: quota-sample
+spec:
+  # TODO(user): Add fields here
