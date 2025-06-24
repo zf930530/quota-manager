@@ -43,6 +43,8 @@ const (
 	RequestedGPUAnnotation = "kmc.io/requested_gpu"
 	// PodClusterIndexKey is the cache index key used to index Pods by cluster label
 	PodClusterIndexKey = "podClusterIdx"
+	// QuotaClusterIndexKey indexes Quota objects by each cluster listed in spec.clusters
+	QuotaClusterIndexKey = "quotaClusterIdx"
 )
 
 // QuotaReconciler reconciles a Quota object
@@ -376,6 +378,15 @@ func (r *QuotaReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
+	// Index quotas by each cluster name they manage
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &kmcv1beta1.Quota{}, QuotaClusterIndexKey, func(rawObj client.Object) []string {
+		q := rawObj.(*kmcv1beta1.Quota)
+		// Return the slice directly; controller-runtime will handle duplicates
+		return q.Spec.Clusters
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kmcv1beta1.Quota{}).
 		Watches(
@@ -395,23 +406,17 @@ func (r *QuotaReconciler) findQuotasForPod(ctx context.Context, pod client.Objec
 		return nil
 	}
 
-	// Find all quotas that include this cluster
+	// Directly list quotas indexed by this cluster name
 	quotaList := &kmcv1beta1.QuotaList{}
-	err := r.List(ctx, quotaList)
-	if err != nil {
+	if err := r.List(ctx, quotaList, client.MatchingFields{QuotaClusterIndexKey: clusterName}); err != nil {
 		return nil
 	}
 
-	var requests []reconcile.Request
+	requests := make([]reconcile.Request, 0, len(quotaList.Items))
 	for _, quota := range quotaList.Items {
-		if r.containsString(quota.Spec.Clusters, clusterName) {
-			// Quota is cluster-scoped, so Namespace must be empty.
-			requests = append(requests, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name: quota.Name,
-				},
-			})
-		}
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: quota.Name},
+		})
 	}
 
 	return requests
