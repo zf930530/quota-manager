@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-
-# Copyright 2025 The quota-manager Authors.
+# Copyright 2025.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,48 +17,21 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-SCRIPT_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
+SCRIPT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
-# Create the pkg/generated directory structure
-mkdir -p "${SCRIPT_ROOT}/pkg/generated/clientset"
-mkdir -p "${SCRIPT_ROOT}/pkg/generated/informers"
-mkdir -p "${SCRIPT_ROOT}/pkg/generated/listers"
+# 1. Generate typed client, informers, listers
+bash "${SCRIPT_ROOT}/hack/generate-groups.sh" "$@"
 
-# Disable vendor mode to use modules
-export GOFLAGS="-mod=mod"
-
-# Use go run to execute the code generator
-go run k8s.io/code-generator/cmd/client-gen \
-  --clientset-name "versioned" \
-  --input-base "" \
-  --input "github.com/zf930530/quota-manager/api/v1beta1" \
-  --output-package "github.com/zf930530/quota-manager/pkg/generated/clientset" \
-  --output-base "${SCRIPT_ROOT}" \
-  --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
-
-go run k8s.io/code-generator/cmd/lister-gen \
-  --input-dirs "github.com/zf930530/quota-manager/api/v1beta1" \
-  --output-package "github.com/zf930530/quota-manager/pkg/generated/listers" \
-  --output-base "${SCRIPT_ROOT}" \
-  --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
-
-go run k8s.io/code-generator/cmd/informer-gen \
-  --input-dirs "github.com/zf930530/quota-manager/api/v1beta1" \
-  --versioned-clientset-package "github.com/zf930530/quota-manager/pkg/generated/clientset/versioned" \
-  --listers-package "github.com/zf930530/quota-manager/pkg/generated/listers" \
-  --output-package "github.com/zf930530/quota-manager/pkg/generated/informers" \
-  --output-base "${SCRIPT_ROOT}" \
-  --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
-
-# Move generated files from incorrect location to correct location
-echo "Moving generated files to correct location..."
-if [ -d "${SCRIPT_ROOT}/github.com/zf930530/quota-manager/pkg/generated" ]; then
-  cp -r "${SCRIPT_ROOT}/github.com/zf930530/quota-manager/pkg/generated/"* "${SCRIPT_ROOT}/pkg/generated/"
-  rm -rf "${SCRIPT_ROOT}/github.com"
-  echo "Generated files moved successfully."
-else
-  echo "No files found in github.com directory, generation may have failed."
+# 2. Regenerate CRDs manifests via controller-gen (installed via go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.15.0)
+if ! command -v controller-gen &>/dev/null; then
+  echo "controller-gen not found in PATH, installing..."
+  go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.15.0
+  export PATH=$(go env GOPATH)/bin:${PATH}
 fi
 
-# To use your own boilerplate text append:
-#   --go-header-file "${SCRIPT_ROOT}"/hack/custom-boilerplate.go.txt 
+controller-gen crd:crdVersions=v1 \
+  paths="./..." \
+  output:crd:dir="${SCRIPT_ROOT}/config/crd/bases" \
+  rbac:roleName=manager-role
+
+echo "Code generation completed." 

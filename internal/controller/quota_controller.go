@@ -405,10 +405,10 @@ func (r *QuotaReconciler) findQuotasForPod(ctx context.Context, pod client.Objec
 	var requests []reconcile.Request
 	for _, quota := range quotaList.Items {
 		if r.containsString(quota.Spec.Clusters, clusterName) {
+			// Quota is cluster-scoped, so Namespace must be empty.
 			requests = append(requests, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      quota.Name,
-					Namespace: quota.Namespace,
+					Name: quota.Name,
 				},
 			})
 		}
